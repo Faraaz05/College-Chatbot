@@ -46,7 +46,34 @@ def get_student_attendance(student_id: str, password: str) -> Dict:
                 "summary": {}
             }
         
-        # Step 2: Get attendance data
+        # Step 2: Check for gross attendance on dashboard first
+        print("🔍 Checking for gross attendance on dashboard...")
+        dashboard_soup = BeautifulSoup(dashboard_html, "html.parser")
+        gross_attendance_element = dashboard_soup.find(id="lblPopGrossAtt")
+        
+        if gross_attendance_element:
+            gross_text = gross_attendance_element.get_text().strip()
+            print(f"✅ Found gross attendance on dashboard: '{gross_text}'")
+            
+            # Extract gross attendance
+            gross_attendance = None
+            gross_match = re.search(r'(\d+(?:\.\d+)?)\s*%', gross_text)
+            if not gross_match:
+                gross_match = re.search(r'(\d+(?:\.\d+)?)', gross_text)
+            
+            if gross_match:
+                gross_attendance = float(gross_match.group(1))
+                print(f"📊 Gross Attendance: {gross_attendance}%")
+                
+                # Return with just gross attendance if that's all we need
+                return {
+                    "success": True,
+                    "data": [],
+                    "message": f"Successfully retrieved gross attendance for {student_id}",
+                    "summary": {"gross_attendance": gross_attendance, "overall_percentage": gross_attendance}
+                }
+        
+        # Step 3: Get detailed attendance data if needed
         attendance_html = get_attendance_page(session, dashboard_html)
         
         if not attendance_html:
@@ -57,11 +84,16 @@ def get_student_attendance(student_id: str, password: str) -> Dict:
                 "summary": {}
             }
         
-        # Step 3: Extract and clean data
-        raw_data = extract_attendance_tables(attendance_html)
+        # Step 4: Extract and clean data
+        raw_data, gross_attendance_from_detail = extract_attendance_tables(attendance_html)
+        # Step 4: Extract and clean data
+        raw_data, gross_attendance_from_detail = extract_attendance_tables(attendance_html)
         cleaned_data = clean_attendance_data(raw_data)
         
-        if not cleaned_data:
+        # Use gross attendance from dashboard if available, otherwise from detail page
+        final_gross_attendance = gross_attendance if 'gross_attendance' in locals() else gross_attendance_from_detail
+        
+        if not cleaned_data and final_gross_attendance is None:
             return {
                 "success": False,
                 "data": [],
@@ -69,8 +101,8 @@ def get_student_attendance(student_id: str, password: str) -> Dict:
                 "summary": {}
             }
         
-        # Step 4: Generate summary
-        summary = generate_summary(cleaned_data)
+        # Step 5: Generate summary
+        summary = generate_summary(cleaned_data, final_gross_attendance)
         
         print(f"✅ Successfully extracted {len(cleaned_data)} attendance records")
         
@@ -184,7 +216,7 @@ def login_to_portal(session: requests.Session, student_id: str, password: str) -
 def get_attendance_page(session: requests.Session, dashboard_html: str) -> Optional[str]:
     """Click on attendance section to get attendance data"""
     
-    print("🎯 Getting attendance data...")
+    print("🎯 Getting detailed attendance data...")
     
     # Parse dashboard and get form data
     soup = BeautifulSoup(dashboard_html, "html.parser")
@@ -201,21 +233,44 @@ def get_attendance_page(session: requests.Session, dashboard_html: str) -> Optio
         "__EVENTARGUMENT": "",
     }
     
+    print("📡 Making postback request...")
     response = session.post("https://charusat.edu.in:912/eGovernance/frmAppSelection.aspx", 
-                           data=postback_payload)
+                           data=postback_payload, timeout=30)
     
     if response.status_code == 200:
-        print("✅ Attendance data retrieved")
+        print("✅ Detailed attendance data retrieved")
         return response.text
     else:
-        print(f"❌ Failed to get attendance data: {response.status_code}")
+        print(f"❌ Failed to get detailed attendance data: {response.status_code}")
         return None
 
 
-def extract_attendance_tables(html_content: str) -> List[Dict]:
-    """Extract attendance data from HTML tables"""
+def extract_attendance_tables(html_content: str) -> Tuple[List[Dict], Optional[str]]:
+    """Extract attendance data from HTML tables and gross attendance"""
     
     soup = BeautifulSoup(html_content, "html.parser")
+    
+    # Extract gross attendance from lblPopGrossAtt
+    gross_attendance_element = soup.find(id="lblPopGrossAtt")
+    gross_attendance = None
+    if gross_attendance_element:
+        gross_text = gross_attendance_element.get_text().strip()
+        print(f"🔍 Raw gross attendance text: '{gross_text}'")
+        
+        # Try different patterns to extract percentage
+        # Pattern 1: Look for percentage with % sign
+        gross_match = re.search(r'(\d+(?:\.\d+)?)\s*%', gross_text)
+        if not gross_match:
+            # Pattern 2: Look for standalone number (might be without %)
+            gross_match = re.search(r'(\d+(?:\.\d+)?)', gross_text)
+        
+        if gross_match:
+            gross_attendance = float(gross_match.group(1))
+            print(f"📊 Gross Attendance: {gross_attendance}%")
+        else:
+            print(f"⚠️ Could not parse gross attendance from: '{gross_text}'")
+    
+    # Extract detailed attendance tables
     tables = soup.find_all("table")
     attendance_data = []
     
@@ -239,7 +294,7 @@ def extract_attendance_tables(html_content: str) -> List[Dict]:
                     row_data = dict(zip(headers, cells))
                     attendance_data.append(row_data)
     
-    return attendance_data
+    return attendance_data, gross_attendance
 
 
 def clean_attendance_data(raw_data: List[Dict]) -> List[Dict]:
@@ -301,15 +356,22 @@ def clean_attendance_data(raw_data: List[Dict]) -> List[Dict]:
     return cleaned_data
 
 
-def generate_summary(cleaned_data: List[Dict]) -> Dict:
+def generate_summary(cleaned_data: List[Dict], gross_attendance: Optional[float] = None) -> Dict:
     """Generate summary statistics"""
     
+    summary = {}
+    
+    # Add gross attendance if available
+    if gross_attendance is not None:
+        summary['gross_attendance'] = gross_attendance
+        print(f"🎯 Using gross attendance: {gross_attendance}%")
+    
     if not cleaned_data:
-        return {}
+        return summary
     
     total_present = sum(record['present'] or 0 for record in cleaned_data)
     total_classes = sum(record['total'] or 0 for record in cleaned_data)
-    overall_percentage = (total_present / total_classes * 100) if total_classes > 0 else 0
+    calculated_percentage = (total_present / total_classes * 100) if total_classes > 0 else 0
     
     # Group by subject
     subjects = {}
@@ -339,13 +401,22 @@ def generate_summary(cleaned_data: List[Dict]) -> Dict:
         else:
             subject['percentage'] = 0
     
-    return {
+    # Update summary with detailed data
+    summary.update({
         'total_present': total_present,
         'total_classes': total_classes,
-        'overall_percentage': round(overall_percentage, 2),
+        'calculated_percentage': round(calculated_percentage, 2),
         'total_records': len(cleaned_data),
         'subjects': subjects
-    }
+    })
+    
+    # Use gross attendance as overall if available, otherwise use calculated
+    if gross_attendance is not None:
+        summary['overall_percentage'] = gross_attendance
+    else:
+        summary['overall_percentage'] = summary['calculated_percentage']
+    
+    return summary
 
 
 def save_attendance_data(data: List[Dict], filename: str = "attendance_data.json") -> bool:
@@ -383,6 +454,13 @@ def print_attendance_summary(result: Dict) -> None:
     
     print("=" * 60)
     print(f"{'OVERALL':<21} | {summary['total_present']:2d}/{summary['total_classes']:2d} ({summary['overall_percentage']:5.1f}%)")
+    
+    # Show both gross and calculated if different
+    if 'gross_attendance' in summary and 'calculated_percentage' in summary:
+        if abs(summary['gross_attendance'] - summary['calculated_percentage']) > 0.1:
+            print(f"{'GROSS (Official)':<21} | {summary['gross_attendance']:5.1f}%")
+            print(f"{'CALCULATED':<21} | {summary['calculated_percentage']:5.1f}%")
+    
     print(f"Total Records: {summary['total_records']}")
 
 

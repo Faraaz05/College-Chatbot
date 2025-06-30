@@ -2,10 +2,13 @@
 websockets>=11.0.0
 aiohttp>=3.8.0
 
-# For Ollama integration
+# For Together.AI API
+together>=0.2.0
+
+# For Ollama integration (optional)
 ollama>=0.1.7
 
-# For Hugging Face Transformers (Option 2)
+# For Hugging Face Transformers (optional)
 transformers>=4.21.0
 torch>=1.12.0
 accelerate>=0.20.0

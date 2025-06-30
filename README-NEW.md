@@ -44,32 +44,7 @@ A modern, responsive chatbot interface built with React and TypeScript, featurin
 
 ## 🛠️ Usage
 
-### Option 1: Together.AI API (Recommended - No local setup required)
-
-1. **Get Together.AI API Key**
-   - Go to [together.ai](https://together.ai) and sign up
-   - Get your API key from the dashboard
-
-2. **Set up the backend**
-   ```bash
-   cd testbackend
-   source venv/bin/activate
-   ./setup_together.sh YOUR_API_KEY
-   ```
-
-3. **Start the backend**
-   ```bash
-   python together_ai_backend.py
-   ```
-
-4. **Start the frontend**
-   ```bash
-   npm run dev
-   ```
-
-5. **Open your browser** to `http://localhost:8501`
-
-### Option 2: Hugging Face Transformers (Local models)
+### Option 1: Hugging Face Transformers (Recommended for beginners)
 
 1. **Start the backend**
    ```bash
@@ -85,7 +60,7 @@ A modern, responsive chatbot interface built with React and TypeScript, featurin
 
 3. **Open your browser** to `http://localhost:8501`
 
-### Option 3: Ollama (Better local performance)
+### Option 2: Ollama (Better performance)
 
 1. **Install Ollama**
    ```bash
@@ -133,20 +108,13 @@ chatbot-ui-master/
 
 ## 🎯 Available Models
 
-### Together.AI (Cloud API)
-- `meta-llama/Llama-2-7b-chat-hf` (Default - fast & reliable)
-- `meta-llama/Llama-2-13b-chat-hf` (Larger, better quality)
-- `mistralai/Mistral-7B-Instruct-v0.1` (Fast & efficient)
-- `togethercomputer/RedPajama-INCITE-Chat-3B-v1` (Lightweight)
-- `NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO` (High quality)
-
-### Hugging Face Transformers (Local)
+### Hugging Face Transformers
 - `distilgpt2` (Default - lightweight)
 - `gpt2`
 - `microsoft/DialoGPT-small`
 - `microsoft/DialoGPT-medium`
 
-### Ollama (Local)
+### Ollama
 - `llama3.2:1b` (Recommended)
 - `llama3.2:3b`
 - `phi3:mini`
@@ -155,21 +123,16 @@ chatbot-ui-master/
 ## 🔧 Configuration
 
 ### Backend Ports
-- Together.AI backend: `8092`
 - Hugging Face backend: `8091`
 - Ollama backend: `8090`
 - Frontend: `8501`
 
 ### Environment Variables
 ```bash
-# Together.AI (required)
-TOGETHER_API_KEY=your-api-key-here
-TOGETHER_MODEL=meta-llama/Llama-2-7b-chat-hf
-
 # Backend port (optional)
-PORT=8092
+PORT=8090
 
-# Local model selection (optional)
+# Model selection (optional)
 MODEL_NAME=distilgpt2
 ```
 

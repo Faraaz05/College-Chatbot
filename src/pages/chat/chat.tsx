@@ -7,7 +7,7 @@ import { Overview } from "@/components/custom/overview";
 import { Header } from "@/components/custom/header";
 import {v4 as uuidv4} from 'uuid';
 
-const socket = new WebSocket("ws://localhost:8091"); //Hugging Face backend on port 8091
+const socket = new WebSocket("ws://localhost:8092"); //Together.AI backend on port 8092
 
 export function Chat() {
   const [messagesContainerRef, messagesEndRef] = useScrollToBottom<HTMLDivElement>();

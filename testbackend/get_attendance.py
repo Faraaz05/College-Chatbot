@@ -31,9 +31,14 @@ def get_student_attendance(student_id: str, password: str) -> Dict:
             - summary (Dict): Summary statistics if successful
     """
     
+    # Validate inputs
+    if not student_id or not password:
+        raise ValueError("Student ID and password must be provided")
+    
+    if not isinstance(student_id, str) or not isinstance(password, str):
+        raise ValueError("Student ID and password must be strings")
+    
     try:
-        print(f"🎓 Fetching attendance data for student: {student_id}")
-        
         # Step 1: Create session and login
         session = create_session()
         dashboard_html = login_to_portal(session, student_id, password)
@@ -42,18 +47,16 @@ def get_student_attendance(student_id: str, password: str) -> Dict:
             return {
                 "success": False,
                 "data": [],
-                "message": "Failed to login to portal",
+                "message": f"Failed to login for student {student_id}. Please check your credentials.",
                 "summary": {}
             }
         
         # Step 2: Check for gross attendance on dashboard first
-        print("🔍 Checking for gross attendance on dashboard...")
         dashboard_soup = BeautifulSoup(dashboard_html, "html.parser")
         gross_attendance_element = dashboard_soup.find(id="lblPopGrossAtt")
         
         if gross_attendance_element:
             gross_text = gross_attendance_element.get_text().strip()
-            print(f"✅ Found gross attendance on dashboard: '{gross_text}'")
             
             # Extract gross attendance
             gross_attendance = None
@@ -63,14 +66,17 @@ def get_student_attendance(student_id: str, password: str) -> Dict:
             
             if gross_match:
                 gross_attendance = float(gross_match.group(1))
-                print(f"📊 Gross Attendance: {gross_attendance}%")
                 
-                # Return with just gross attendance if that's all we need
+                # Return concise response with gross attendance
                 return {
                     "success": True,
+                    "message": f"Attendance for student {student_id} retrieved: Overall {gross_attendance}%",
                     "data": [],
-                    "message": f"Successfully retrieved gross attendance for {student_id}",
-                    "summary": {"gross_attendance": gross_attendance, "overall_percentage": gross_attendance}
+                    "summary": {
+                        "gross_attendance": gross_attendance, 
+                        "overall_percentage": gross_attendance,
+                        "student_id": student_id
+                    }
                 }
         
         # Step 3: Get detailed attendance data if needed
@@ -80,12 +86,10 @@ def get_student_attendance(student_id: str, password: str) -> Dict:
             return {
                 "success": False,
                 "data": [],
-                "message": "Failed to access attendance page",
+                "message": f"Failed to access detailed attendance page for student {student_id}",
                 "summary": {}
             }
         
-        # Step 4: Extract and clean data
-        raw_data, gross_attendance_from_detail = extract_attendance_tables(attendance_html)
         # Step 4: Extract and clean data
         raw_data, gross_attendance_from_detail = extract_attendance_tables(attendance_html)
         cleaned_data = clean_attendance_data(raw_data)
@@ -97,28 +101,26 @@ def get_student_attendance(student_id: str, password: str) -> Dict:
             return {
                 "success": False,
                 "data": [],
-                "message": "No attendance data found",
+                "message": f"No attendance data found for student {student_id}",
                 "summary": {}
             }
         
         # Step 5: Generate summary
         summary = generate_summary(cleaned_data, final_gross_attendance)
-        
-        print(f"✅ Successfully extracted {len(cleaned_data)} attendance records")
+        summary["student_id"] = student_id
         
         return {
             "success": True,
             "data": cleaned_data,
-            "message": f"Successfully retrieved attendance data for {student_id}",
+            "message": f"Attendance for student {student_id} retrieved: Overall {summary.get('overall_percentage', 0)}% ({len(cleaned_data)} records)",
             "summary": summary
         }
         
     except Exception as e:
-        print(f"❌ Error getting attendance data: {str(e)}")
         return {
             "success": False,
             "data": [],
-            "message": f"Error: {str(e)}",
+            "message": f"Error retrieving attendance for student {student_id}: {str(e)}",
             "summary": {}
         }
 

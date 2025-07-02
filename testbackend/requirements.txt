@@ -5,6 +5,10 @@ aiohttp>=3.8.0
 # For Together.AI API
 together>=0.2.0
 
+# LangChain for tool integration
+langchain>=0.1.0
+langchain-together>=0.1.0
+
 # For Ollama integration (optional)
 ollama>=0.1.7
 

@@ -82,6 +82,9 @@ class TogetherAIBackend:
         self.api_key = os.getenv('TOGETHER_API_KEY')
         self.model = os.getenv('TOGETHER_MODEL', 'meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo')
         
+        # Conversation memory to store chat history
+        self.conversation_history = []
+        
         if not self.api_key:
             print("❌ TOGETHER_API_KEY environment variable not set!")
             print("Please set your Together.AI API key:")
@@ -138,14 +141,18 @@ class TogetherAIBackend:
         """Call the LLM with system prompt"""
         messages = state['messages']
         
-        # Create a proper conversation with system message
+        # Create a proper conversation with system message and history
         conversation = []
         
         # Add system message
         system_msg = f"System: {self.get_system_prompt()}"
         conversation.append(HumanMessage(content=system_msg))
         
-        # Add user messages and tool outputs
+        # Add conversation history (previous messages)
+        for hist_msg in self.conversation_history:
+            conversation.append(hist_msg)
+        
+        # Add current messages
         for msg in messages:
             conversation.append(msg)
         
@@ -194,11 +201,13 @@ IMPORTANT RULES:
 2. For attendance requests, ONLY use the get_attendance tool when BOTH student ID and password are provided.
 3. Use the get_attendance tool ONLY ONCE per request - it returns complete information.
 4. After using the get_attendance tool, provide a friendly interpretation of the results.
-5. Present tool results clearly and conversationally.
+5. For follow-up questions about previously retrieved attendance data, use the information from our conversation history. DO NOT call the tool again.
+6. Present tool results clearly and conversationally.
 
 When a user asks for attendance:
 - If they haven't provided credentials, ask for student ID and password.
 - If they have provided both, use the tool once and present the results.
+- For follow-up questions about the same attendance data, refer to the previous tool output in our conversation.
 
 For all other questions, answer as a helpful college chatbot.
 
@@ -231,6 +240,8 @@ Be helpful, friendly, and efficient."""
             
             # Get the final response
             final_messages = result["messages"]
+            output = ""
+            
             if final_messages:
                 # Get the last AI message
                 for msg in reversed(final_messages):
@@ -245,6 +256,18 @@ Be helpful, friendly, and efficient."""
                     output = "I'm sorry, I couldn't process your request. Please try again."
             else:
                 output = "I'm sorry, I couldn't process your request. Please try again."
+            
+            # Store conversation in memory for follow-up questions
+            self.conversation_history.append(human_message)
+            
+            # Store all messages from this conversation (including tool calls/outputs)
+            for msg in final_messages:
+                if isinstance(msg, (AIMessage, ToolMessage)):
+                    self.conversation_history.append(msg)
+            
+            # Keep only last 10 messages to prevent context overflow
+            if len(self.conversation_history) > 10:
+                self.conversation_history = self.conversation_history[-10:]
             
             # Stream the response word by word for better UX
             words = output.split()

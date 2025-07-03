@@ -269,11 +269,27 @@ Be helpful, friendly, and efficient."""
             if len(self.conversation_history) > 10:
                 self.conversation_history = self.conversation_history[-10:]
             
-            # Stream the response word by word for better UX
-            words = output.split()
-            for i, word in enumerate(words):
-                yield word + (" " if i < len(words) - 1 else "")
-                await asyncio.sleep(0.03)
+            # Stream the response preserving formatting with chunks
+            # Split by lines and send meaningful chunks
+            lines = output.split('\n')
+            for i, line in enumerate(lines):
+                if line.strip():  # Only process non-empty lines
+                    # For structured data (like attendance), send line by line
+                    # For regular text, send word by word
+                    if any(symbol in line for symbol in ['✅', '⚠️', '📚', '🎯', '%', '(']):
+                        # This looks like structured attendance data - send the whole line
+                        yield line
+                        await asyncio.sleep(0.1)
+                    else:
+                        # Regular text - send word by word
+                        words = line.split()
+                        for j, word in enumerate(words):
+                            yield word + (" " if j < len(words) - 1 else "")
+                            await asyncio.sleep(0.03)
+                # Send line break after each line (except the last one)
+                if i < len(lines) - 1:
+                    yield "\n"
+                    await asyncio.sleep(0.03)
                 
         except Exception as e:
             print(f"❌ Error in chat_stream: {e}")

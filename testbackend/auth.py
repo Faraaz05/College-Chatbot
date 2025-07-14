@@ -50,9 +50,55 @@ class AuthManager:
         """Generate a secure session ID"""
         return secrets.token_urlsafe(32)
     
-    def register_user(self, username: str, student_id: str, password: str, egov_password: str) -> Dict[str, Any]:
-        """Register a new user"""
+    def verify_egov_credentials(self, student_id: str, egov_password: str) -> Dict[str, Any]:
+        """Verify e-governance credentials by checking if login succeeds"""
         try:
+            print(f"🔐 Verifying e-governance credentials for: {student_id}")
+            
+            # Import here to avoid circular imports
+            from get_attendance import create_session, login_to_portal
+            
+            # Create session and try to login
+            session = create_session()
+            dashboard_html = login_to_portal(session, student_id, egov_password)
+            
+            if dashboard_html:
+                print(f"✅ E-governance credentials verified successfully")
+                return {
+                    'success': True,
+                    'message': 'E-governance credentials verified successfully'
+                }
+            else:
+                print(f"❌ E-governance verification failed: Invalid credentials")
+                return {
+                    'success': False,
+                    'message': 'Invalid e-governance credentials'
+                }
+                
+        except Exception as e:
+            print(f"❌ E-governance verification error: {str(e)}")
+            return {
+                'success': False,
+                'message': f'Verification failed: {str(e)}'
+            }
+    
+    def register_user(self, username: str, student_id: str, password: str, egov_password: str) -> Dict[str, Any]:
+        """Register a new user with e-governance credential verification"""
+        try:
+            # First verify e-governance credentials
+            print(f"🔐 Verifying e-governance credentials for student: {student_id}")
+            
+            verification_result = self.verify_egov_credentials(student_id, egov_password)
+            
+            if not verification_result.get('success'):
+                print(f"❌ E-governance verification failed: {verification_result.get('message', 'Unknown error')}")
+                return {
+                    'success': False, 
+                    'message': f"E-governance credential verification failed: {verification_result.get('message', 'Invalid student ID or password')}"
+                }
+            
+            print(f"✅ E-governance credentials verified successfully")
+            
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
@@ -83,11 +129,12 @@ class AuthManager:
             
             return {
                 'success': True, 
-                'message': 'User registered successfully',
+                'message': 'User registered successfully with verified e-governance credentials',
                 'user_id': user_id
             }
             
         except Exception as e:
+            print(f"❌ Registration error: {str(e)}")
             return {'success': False, 'message': f'Registration failed: {str(e)}'}
     
     def login_user(self, username: str, password: str) -> Dict[str, Any]:

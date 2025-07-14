@@ -60,6 +60,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
     
+    // Clear chat memory through WebSocket
+    try {
+      const ws = new WebSocket("ws://localhost:8092");
+      ws.onopen = () => {
+        ws.send("LOGOUT");
+        ws.close();
+      };
+    } catch (error) {
+      console.error('Failed to clear chat memory:', error);
+    }
+    
     setSessionId(null);
     setUser(null);
     localStorage.removeItem('sessionId');

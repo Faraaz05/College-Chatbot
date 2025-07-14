@@ -1,21 +1,45 @@
 import { ChatInput } from "@/components/custom/chatinput";
 import { PreviewMessage, ThinkingMessage } from "../../components/custom/message";
 import { useScrollToBottom } from '@/components/custom/use-scroll-to-bottom';
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { message } from "../../interfaces/interfaces"
 import { Overview } from "@/components/custom/overview";
 import { Header } from "@/components/custom/header";
+import { useAuth } from "../../context/AuthContext";
 import {v4 as uuidv4} from 'uuid';
-
-const socket = new WebSocket("ws://localhost:8092"); //Together.AI backend on port 8092
 
 export function Chat() {
   const [messagesContainerRef, messagesEndRef] = useScrollToBottom<HTMLDivElement>();
   const [messages, setMessages] = useState<message[]>([]);
   const [question, setQuestion] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [socket, setSocket] = useState<WebSocket | null>(null);
+  const { sessionId } = useAuth();
 
   const messageHandlerRef = useRef<((event: MessageEvent) => void) | null>(null);
+
+  // Initialize WebSocket connection
+  useEffect(() => {
+    const ws = new WebSocket("ws://localhost:8092");
+    
+    ws.onopen = () => {
+      console.log("WebSocket connected");
+      // Send session ID if available
+      if (sessionId) {
+        ws.send(`SESSION:${sessionId}`);
+      }
+    };
+    
+    ws.onclose = () => {
+      console.log("WebSocket disconnected");
+    };
+    
+    setSocket(ws);
+    
+    return () => {
+      ws.close();
+    };
+  }, [sessionId]);
 
   const cleanupMessageHandler = () => {
     if (messageHandlerRef.current && socket) {

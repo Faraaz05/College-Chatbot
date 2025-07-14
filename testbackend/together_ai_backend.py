@@ -51,8 +51,8 @@ def attendance_tool_func(student_id: str, password: str) -> str:
             subjects = summary.get('subjects', {})
             if subjects:
                 response += "📚 Subject-wise Attendance:\n"
-                for subject_code, subject_info in subjects.items():
-                    name = subject_info.get('course_name', subject_code)
+                for subject_key, subject_info in subjects.items():
+                    name = subject_info.get('course_name', subject_key)
                     percentage = subject_info.get('percentage', 0)
                     present = subject_info.get('total_present', 0)
                     total = subject_info.get('total_classes', 0)

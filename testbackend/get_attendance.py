@@ -375,28 +375,40 @@ def generate_summary(cleaned_data: List[Dict], gross_attendance: Optional[float]
     total_classes = sum(record['total'] or 0 for record in cleaned_data)
     calculated_percentage = (total_present / total_classes * 100) if total_classes > 0 else 0
     
-    # Group by subject
+    # Group by subject, keeping lecture and lab separate, avoiding duplicates
     subjects = {}
+    seen_combinations = set()
+    
     for record in cleaned_data:
         course = record['course_code']
-        if course not in subjects:
-            subjects[course] = {
-                'course_name': record.get('course_name', course),
-                'total_present': 0,
-                'total_classes': 0,
-                'classes': []
-            }
+        class_type = record['class_type']
+        present = record['present'] or 0
+        total = record['total'] or 0
         
-        subjects[course]['total_present'] += record['present'] or 0
-        subjects[course]['total_classes'] += record['total'] or 0
-        subjects[course]['classes'].append({
-            'type': record['class_type'],
-            'present': record['present'],
-            'total': record['total'],
-            'percentage': record['percentage']
-        })
+        # Create unique identifier for this specific record
+        record_id = f"{course}_{class_type}_{present}_{total}"
+        
+        # Skip if we've already seen this exact record
+        if record_id in seen_combinations:
+            continue
+        seen_combinations.add(record_id)
+        
+        # Create unique key for each subject-classtype combination
+        subject_key = f"{course}_{class_type}"
+        display_name = f"{record.get('course_name', course)} ({class_type})"
+        
+        # Use only the first occurrence of each subject-type combination
+        if subject_key not in subjects:
+            subjects[subject_key] = {
+                'course_name': display_name,
+                'course_code': course,
+                'class_type': class_type,
+                'total_present': present,
+                'total_classes': total,
+                'classes': [record]
+            }
     
-    # Calculate subject percentages
+    # Calculate subject percentages for each lecture/lab separately
     for subject in subjects.values():
         if subject['total_classes'] > 0:
             subject['percentage'] = subject['total_present'] / subject['total_classes'] * 100

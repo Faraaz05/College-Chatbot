@@ -243,6 +243,11 @@ Be helpful, friendly, and efficient."""
         """Wrapper function to call attendance_tool_func with current session"""
         return attendance_tool_func(self.current_session_id)
     
+    def clear_memory(self):
+        """Clear conversation history"""
+        self.conversation_history = []
+        print("🧹 Conversation memory cleared")
+    
     async def chat_stream(self, message: str) -> AsyncGenerator[str, None]:
         """Stream chat completion using LangGraph agent"""
         try:
@@ -339,6 +344,21 @@ async def handle_chat(websocket):
             if message.startswith("SESSION:"):
                 session_id = message.replace("SESSION:", "")
                 together_ai.set_session(session_id)
+                continue
+            
+            # Check if this is a clear memory command
+            if message == "CLEAR_MEMORY":
+                together_ai.clear_memory()
+                await websocket.send("Memory cleared successfully! How can I help you?")
+                await websocket.send("[END]")
+                continue
+            
+            # Check if this is a logout command
+            if message == "LOGOUT":
+                together_ai.clear_memory()
+                together_ai.set_session(None)
+                await websocket.send("You have been logged out. Memory cleared.")
+                await websocket.send("[END]")
                 continue
             
             print(f"📨 Received: {message}", flush=True)

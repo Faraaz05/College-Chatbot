@@ -5,6 +5,7 @@ import { useState, useRef, useEffect } from "react";
 import { message } from "../../interfaces/interfaces"
 import { Overview } from "@/components/custom/overview";
 import { Header } from "@/components/custom/header";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useAuth } from "../../context/AuthContext";
 import {v4 as uuidv4} from 'uuid';
 
@@ -14,6 +15,7 @@ export function Chat() {
   const [question, setQuestion] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [socket, setSocket] = useState<WebSocket | null>(null);
+  const [showClearDialog, setShowClearDialog] = useState(false);
   const { sessionId } = useAuth();
 
   const messageHandlerRef = useRef<((event: MessageEvent) => void) | null>(null);
@@ -45,6 +47,19 @@ export function Chat() {
     if (messageHandlerRef.current && socket) {
       socket.removeEventListener("message", messageHandlerRef.current);
       messageHandlerRef.current = null;
+    }
+  };
+
+  const clearChat = () => {
+    if (messages.length > 0) {
+      setShowClearDialog(true);
+    }
+  };
+
+  const confirmClearChat = () => {
+    setMessages([]);
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send("CLEAR_MEMORY");
     }
   };
 
@@ -94,7 +109,7 @@ async function handleSubmit(text?: string) {
 
   return (
     <div className="flex flex-col min-w-0 h-dvh bg-background">
-      <Header/>
+      <Header onNewChat={clearChat} />
       <div className="flex flex-col min-w-0 gap-6 flex-1 overflow-y-scroll pt-4" ref={messagesContainerRef}>
         {messages.length == 0 && <Overview />}
         {messages.map((message, index) => (
@@ -111,6 +126,16 @@ async function handleSubmit(text?: string) {
           isLoading={isLoading}
         />
       </div>
+      
+      <ConfirmDialog
+        isOpen={showClearDialog}
+        onClose={() => setShowClearDialog(false)}
+        onConfirm={confirmClearChat}
+        title="Clear Chat"
+        description="Are you sure you want to start a new chat? This will clear all previous messages and conversation history."
+        confirmText="Clear Chat"
+        cancelText="Cancel"
+      />
     </div>
   );
 };

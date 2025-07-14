@@ -22,6 +22,9 @@ from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 # Import the attendance function
 from get_attendance import get_student_attendance
 
+# Import authentication
+from auth import AuthManager
+
 # Load environment variables from .env file if it exists
 def load_env():
     env_file = Path(__file__).parent / '.env'
@@ -35,14 +38,27 @@ def load_env():
 
 load_env()
 
-def attendance_tool_func(student_id: str, password: str) -> str:
+def attendance_tool_func(session_id: str = None) -> str:
     """
-    Tool function to get student attendance data.
-    Expects student_id and password as separate arguments.
+    Tool function to get student attendance data using session-based authentication.
     """
     try:
+        if not session_id:
+            return "❌ You need to be logged in to check attendance. Please log in first."
+        
+        # Get auth manager instance
+        auth_manager = AuthManager()
+        user = auth_manager.get_user_by_session(session_id)
+        
+        if not user:
+            return "❌ Invalid session. Please log in again."
+        
+        student_id = user['student_id']
+        password = user['egov_password']
+        
         if not student_id or not password:
-            return "❌ Both student ID and password are required"
+            return "❌ Missing credentials in your profile"
+        
         result = get_student_attendance(student_id, password)
         if result.get('success'):
             summary = result.get('summary', {})
@@ -85,6 +101,9 @@ class TogetherAIBackend:
         # Conversation memory to store chat history
         self.conversation_history = []
         
+        # Current user session
+        self.current_session_id = None
+        
         if not self.api_key:
             print("❌ TOGETHER_API_KEY environment variable not set!")
             print("Please set your Together.AI API key:")
@@ -101,13 +120,11 @@ class TogetherAIBackend:
         
         # Define the attendance tool
         self.attendance_tool = StructuredTool.from_function(
-            func=attendance_tool_func,
+            func=self.get_attendance_with_session,
             name="get_attendance",
-            description="""Get student attendance data from CHARUSAT portal. 
-            ONLY use this tool when the user has provided BOTH their student ID and password.
-            Input: student_id and password as separate fields.
-            DO NOT use this tool if the user hasn't provided credentials.
-            This tool returns complete attendance information."""
+            description="""Get student attendance data from CHARUSAT portal using stored credentials.
+            ONLY use this tool when the user asks for their attendance and they are logged in.
+            This tool automatically uses the logged-in user's credentials."""
         )
         
         # Bind tools to LLM
@@ -194,24 +211,37 @@ class TogetherAIBackend:
     
     def get_system_prompt(self):
         """Get the system prompt"""
-        return """You are a helpful, friendly, and knowledgeable AI assistant for CHARUSAT students. You are a general-purpose college chatbot: you can answer questions about college life, academics, events, procedures, and more, as well as check attendance data.
+        session_status = "logged in" if self.current_session_id else "not logged in"
+        return f"""You are a helpful, friendly, and knowledgeable AI assistant for CHARUSAT students. You are a general-purpose college chatbot: you can answer questions about college life, academics, events, procedures, and more, as well as check attendance data.
+
+CURRENT USER STATUS: The user is {session_status}.
 
 IMPORTANT RULES:
 1. For general conversation or college-related questions, respond normally without using tools.
-2. For attendance requests, ONLY use the get_attendance tool when BOTH student ID and password are provided.
-3. Use the get_attendance tool ONLY ONCE per request - it returns complete information.
-4. After using the get_attendance tool, provide a friendly interpretation of the results.
-5. For follow-up questions about previously retrieved attendance data, use the information from our conversation history. DO NOT call the tool again.
-6. Present tool results clearly and conversationally.
+2. For attendance requests, use the get_attendance tool ONLY if the user is logged in.
+3. If user asks for attendance and they are logged in, use the tool and present the results.
+4. If user asks for attendance but they are not logged in, tell them they need to register/login first.
+5. Use the get_attendance tool ONLY ONCE per request - it returns complete information.
+6. After using the get_attendance tool, provide a friendly interpretation of the results.
+7. For follow-up questions about previously retrieved attendance data, use the information from our conversation history. DO NOT call the tool again.
+8. Present tool results clearly and conversationally.
 
 When a user asks for attendance:
-- If they haven't provided credentials, ask for student ID and password.
-- If they have provided both, use the tool once and present the results.
-- For follow-up questions about the same attendance data, refer to the previous tool output in our conversation.
+- If they are not logged in, tell them to log in first at /login
+- If they are logged in, use the tool once and present the results
+- For follow-up questions about the same attendance data, refer to the previous tool output in our conversation
 
 For all other questions, answer as a helpful college chatbot.
 
 Be helpful, friendly, and efficient."""
+    
+    def set_session(self, session_id: str):
+        """Set the current session ID"""
+        self.current_session_id = session_id
+    
+    def get_attendance_with_session(self) -> str:
+        """Wrapper function to call attendance_tool_func with current session"""
+        return attendance_tool_func(self.current_session_id)
     
     async def chat_stream(self, message: str) -> AsyncGenerator[str, None]:
         """Stream chat completion using LangGraph agent"""
@@ -301,7 +331,16 @@ together_ai = TogetherAIBackend()
 async def handle_chat(websocket):
     """Handle WebSocket chat messages"""
     try:
+        # Get session ID from query parameters if available
+        session_id = None
+        
         async for message in websocket:
+            # Check if this is a session setup message
+            if message.startswith("SESSION:"):
+                session_id = message.replace("SESSION:", "")
+                together_ai.set_session(session_id)
+                continue
+            
             print(f"📨 Received: {message}", flush=True)
             
             # Stream response from Together.AI with LangChain

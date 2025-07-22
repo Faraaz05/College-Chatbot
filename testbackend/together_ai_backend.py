@@ -25,6 +25,15 @@ from get_attendance import get_student_attendance
 # Import authentication
 from auth import AuthManager
 
+# Import academic database functions
+from academic_db import (
+    get_faculty_by_subject_name, 
+    get_subjects_for_year_branch, 
+    get_counsellor_for_roll,
+    get_subjects_for_roll_number,
+    academic_db
+)
+
 # Load environment variables from .env file if it exists
 def load_env():
     env_file = Path(__file__).parent / '.env'
@@ -127,8 +136,52 @@ class TogetherAIBackend:
             This tool automatically uses the logged-in user's credentials."""
         )
         
+        # Define academic tools
+        self.faculty_tool = StructuredTool.from_function(
+            func=get_faculty_by_subject_name,
+            name="get_faculty_by_subject",
+            description="""Find faculty members who teach a specific subject.
+            Use this when user asks questions like 'Who teaches Machine Learning?' or 'Who is the ML professor?'
+            Supports fuzzy matching (e.g., 'ML' matches 'Machine Learning').""",
+            args_schema=None
+        )
+        
+        self.subjects_by_year_branch_tool = StructuredTool.from_function(
+            func=get_subjects_for_year_branch,
+            name="get_subjects_by_year_branch", 
+            description="""Get subjects for a specific academic year and branch.
+            Use this when user asks for subjects of a particular year and branch.
+            Year: 1=First Year, 2=Second Year, 3=Third Year, 4=Fourth Year
+            Branch: CS, IT, CE, etc.""",
+            args_schema=None
+        )
+        
+        self.counsellor_tool = StructuredTool.from_function(
+            func=get_counsellor_for_roll,
+            name="get_counsellor_by_roll",
+            description="""Find the student counsellor for a specific roll number.
+            Use this when user asks 'Who is my counsellor?' or provides their roll number.
+            Example roll numbers: 23CS045, 22IT012, etc.""",
+            args_schema=None
+        )
+        
+        self.subjects_by_roll_tool = StructuredTool.from_function(
+            func=get_subjects_for_roll_number,
+            name="get_subjects_by_roll",
+            description="""Get subjects for a student based on their roll number.
+            Use this when user provides their roll number and asks for their subjects.
+            Automatically determines year and branch from roll number.""",
+            args_schema=None
+        )
+        
         # Bind tools to LLM
-        self.llm_with_tools = self.llm.bind_tools([self.attendance_tool])
+        self.llm_with_tools = self.llm.bind_tools([
+            self.attendance_tool,
+            self.faculty_tool, 
+            self.subjects_by_year_branch_tool,
+            self.counsellor_tool,
+            self.subjects_by_roll_tool
+        ])
         
         # Create the workflow graph
         self.workflow = StateGraph(AgentState)
@@ -183,7 +236,22 @@ class TogetherAIBackend:
         
         tool_outputs = []
         for tool_call in last_message.tool_calls:
-            tool_output = self.attendance_tool.invoke(tool_call["args"])
+            # Route to the appropriate tool
+            tool_name = tool_call["name"]
+            
+            if tool_name == "get_attendance":
+                tool_output = self.attendance_tool.invoke(tool_call["args"])
+            elif tool_name == "get_faculty_by_subject":
+                tool_output = self.faculty_tool.invoke(tool_call["args"])
+            elif tool_name == "get_subjects_by_year_branch":
+                tool_output = self.subjects_by_year_branch_tool.invoke(tool_call["args"])
+            elif tool_name == "get_counsellor_by_roll":
+                tool_output = self.counsellor_tool.invoke(tool_call["args"])
+            elif tool_name == "get_subjects_by_roll":
+                tool_output = self.subjects_by_roll_tool.invoke(tool_call["args"])
+            else:
+                tool_output = f"Unknown tool: {tool_name}"
+            
             tool_outputs.append(
                 ToolMessage(
                     content=tool_output,
@@ -212,28 +280,42 @@ class TogetherAIBackend:
     def get_system_prompt(self):
         """Get the system prompt"""
         session_status = "logged in" if self.current_session_id else "not logged in"
-        return f"""You are a helpful, friendly, and knowledgeable AI assistant for CHARUSAT students. You are a general-purpose college chatbot: you can answer questions about college life, academics, events, procedures, and more, as well as check attendance data.
+        return f"""You are a helpful, friendly, and knowledgeable AI assistant for CHARUSAT students. You are a comprehensive college chatbot that can:
+
+1. **Answer general questions** about college life, academics, events, procedures
+2. **Check attendance data** (for logged-in users)
+3. **Provide faculty information** - who teaches what subjects
+4. **List subjects** for different years and branches  
+5. **Find student counsellors** based on roll numbers
+6. **Academic guidance** and course information
 
 CURRENT USER STATUS: The user is {session_status}.
 
+AVAILABLE TOOLS:
+- **get_attendance**: Get attendance data (requires login)
+- **get_faculty_by_subject**: Find faculty teaching specific subjects
+- **get_subjects_by_year_branch**: Get subjects for year/branch (e.g., 3rd year CS)
+- **get_counsellor_by_roll**: Find counsellor for a roll number
+- **get_subjects_by_roll**: Get subjects for a specific roll number
+
 IMPORTANT RULES:
-1. For general conversation or college-related questions, respond normally without using tools.
-2. For attendance requests, use the get_attendance tool ONLY if the user is logged in.
-3. If user asks for attendance and they are logged in, use the tool and present the results.
-4. If user asks for attendance but they are not logged in, tell them they need to register/login first.
-5. Use the get_attendance tool ONLY ONCE per request - it returns complete information.
-6. After using the get_attendance tool, provide a friendly interpretation of the results.
-7. For follow-up questions about previously retrieved attendance data, use the information from our conversation history. DO NOT call the tool again.
-8. Present tool results clearly and conversationally.
+1. For attendance requests, use get_attendance tool ONLY if user is logged in
+2. For faculty queries like "Who teaches ML?" use get_faculty_by_subject
+3. For subject lists like "3rd year CS subjects" use get_subjects_by_year_branch
+4. For counsellor queries use get_counsellor_by_roll
+5. For "my subjects" with roll number use get_subjects_by_roll
+6. Use tools ONLY ONCE per request - they return complete information
+7. Present results in a friendly, conversational manner
+8. For follow-up questions, refer to previous tool outputs in conversation history
 
-When a user asks for attendance:
-- If they are not logged in, tell them to log in first at /login
-- If they are logged in, use the tool once and present the results
-- For follow-up questions about the same attendance data, refer to the previous tool output in our conversation
+EXAMPLES:
+- "Who teaches Machine Learning?" → use get_faculty_by_subject
+- "Give me 3rd year CSE subjects" → use get_subjects_by_year_branch  
+- "Who's my counsellor for 23CS045?" → use get_counsellor_by_roll
+- "What subjects do I have?" (with roll) → use get_subjects_by_roll
+- "What's my attendance?" → use get_attendance (if logged in)
 
-For all other questions, answer as a helpful college chatbot.
-
-Be helpful, friendly, and efficient."""
+Be helpful, friendly, and provide comprehensive answers using the available tools."""
     
     def set_session(self, session_id: str):
         """Set the current session ID"""
@@ -384,7 +466,12 @@ async def main():
     print("🚀 Together.AI WebSocket Server with LangChain Starting...")
     print(f"🌐 Server will run on port {port}")
     print(f"🤖 Using model: {together_ai.model}")
-    print("🛠️  Available tools: get_attendance")
+    print("🛠️  Available tools:")
+    print("   - get_attendance (requires login)")
+    print("   - get_faculty_by_subject") 
+    print("   - get_subjects_by_year_branch")
+    print("   - get_counsellor_by_roll")
+    print("   - get_subjects_by_roll")
     
     async with websockets.serve(
         handle_chat,

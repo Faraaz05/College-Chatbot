@@ -16,13 +16,23 @@ interface ChatInputProps {
 const suggestedActions = [
     {
         title: "What's my attendance?",
-        label: 'Check Your Attendance',
+        label: '',
         action: "What's my attendance?",
     },
     {
-        title: "What can you do?",
-        label: 'Check my features',
-        action: "What can you do??",
+        title: 'Who teaches',
+        label: 'Machine Learning?',
+        action: 'Who teaches Machine Learning?',
+    },
+    {
+        title: 'Give me 3rd year',
+        label: 'CSE subjects',
+        action: 'Give me 3rd year CSE subjects',
+    },
+    {
+        title: 'What can you',
+        label: 'help me with?',
+        action: 'What things can I help you with?',
     },
 ];
 
